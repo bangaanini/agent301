@@ -68,34 +68,5 @@
 
 2. The software will work with all accounts using the single `API_ID` and `API_HASH`. No need to change them for each account.
 
-## Important Notes
-
-- **Python Version:** The software runs on Python 3.11. Using a different version may cause errors.
-- DONT USE MAIN ACCOUNT BECAUSE THERE IS ALWAYS A CHANCE TO GET BANNED IN TELEGRAM
-
-
----
-
-DONATIONS 
-```txt
-ton   : UQCLxqnBscAH1i8WNU2qfqXrAKCd5AoNgbuNrvZHTZOLI3Yg
-
-sol   : BKmvLTyW29Pkb1yixJrUh6q6JgCkyqY5VGAN5DwgLatK
-
-ltc   : ltc1q4jxmwt2hrwz05jgplaxsx7ytdmyd06n9w43qtx
-
-btc   : bc1qfhy5de2xmewzlyd8gct8e8lxxwkm33u359sxpe
-
-evm   : 0xffD503AD80C9486D8588fD0DE2E129F2F0E1d618
-
-trc20 : TN6qKhsbjB1WaetixdRigNrmUw1MCqAyh3
-
-dash  : Xu4VUgxQTKk5URkbgMiZv6uLzJpHR4NH6y
-
-zec   : t1aFA4poLSA6psJ1pbsK63MeXKQ6ECkqz5M
-```
-
-Don't forget to follow our [Telegram channel](https://t.me/petyasofts) for updates.
-
 
 
