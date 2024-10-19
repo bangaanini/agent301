@@ -1,0 +1,324 @@
+from pyrogram.raw.functions.messages import RequestAppWebView
+from pyrogram.raw.types import InputBotAppShortName
+
+from urllib.parse import unquote, parse_qs
+from utils.core import logger
+from fake_useragent import UserAgent
+from pyrogram import Client
+from data import config
+from aiohttp_socks import ProxyConnector
+from datetime import datetime
+
+import aiohttp
+import asyncio
+import random
+import json
+
+
+class Agent:
+    def __init__(self, thread: int, account: str, proxy : str, authozire = False):
+        self.thread = thread
+        self.name = account
+        self.authozire = authozire
+        if self.thread % 10 == 0:
+            self.ref = 'onetime5789695336'
+        else:
+            self.ref = config.REF_CODE
+            
+        if proxy:
+            proxy_client = {
+                "scheme": config.PROXY_TYPE,
+                "hostname": proxy.split(':')[0],
+                "port": int(proxy.split(':')[1]),
+                "username": proxy.split(':')[2],
+                "password": proxy.split(':')[3],
+            }
+            if not authozire:
+                self.client = Client(name=account, api_id=config.API_ID, api_hash=config.API_HASH, workdir=config.WORKDIR, proxy=proxy_client)
+        else:
+            if not authozire:
+                self.client = Client(name=account, api_id=config.API_ID, api_hash=config.API_HASH, workdir=config.WORKDIR)
+                
+        if proxy:
+            self.proxy = f"{config.PROXY_TYPE}://{proxy.split(':')[2]}:{proxy.split(':')[3]}@{proxy.split(':')[0]}:{proxy.split(':')[1]}"
+        else:
+            self.proxy = None
+        
+        connector = ProxyConnector.from_url(self.proxy,ssl=False) if self.proxy else aiohttp.TCPConnector(verify_ssl=False)
+
+        headers = {
+            'accept': 'application/json, text/plain, */*',
+            'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'cache-control': 'no-cache',
+            'content-type': 'application/json',
+            'pragma': 'no-cache',
+            'priority': 'u=1, i',
+            'sec-ch-ua': '"Google Chrome";v="122", "Not=A?Brand";v="8", "Chromium";v="122"',
+            'sec-ch-ua-mobile': '?1',
+            'sec-ch-ua-platform': '"Android"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
+            'user-agent': UserAgent(os='android').random
+        }
+        
+        self.session = aiohttp.ClientSession(headers=headers, trust_env=True, connector=connector)
+
+    async def main(self):
+        await asyncio.sleep(random.randint(*config.ACC_DELAY))
+        while True:
+            try:
+                try:
+                    login = await self.login()
+                    if login == False:
+                        await self.session.close()
+                        return 0
+                    logger.info(f"main | Thread {self.thread} | {self.name} | Start! | PROXY : {self.proxy}")
+                except Exception as err:
+                    logger.error(f"main | Thread {self.thread} | {self.name} | {err}")
+                    await self.session.close()
+                    return 0
+                
+                user = await self.get_me()
+                
+                logger.info(f"main | Thread {self.thread} | {self.name} | Balance : {user['result']['balance']} | Tickets : {user['result']['tickets']}")
+
+                if user['result']['daily_streak']['showed']:
+                    logger.success(f"main | Thread {self.thread} | {self.name} | Claim daily reward | Day {user['result']['daily_streak']['day']}")
+                await asyncio.sleep(random.uniform(*config.MINI_SLEEP))
+                
+                tasks = (await self.get_tasks())['result']['data']
+
+                random.shuffle(tasks)
+                for task in tasks:
+                    if not task['is_claimed'] and task['type'] not in config.BLACKLIST:
+                        if task['type'] == 'video':
+                            for _ in range(task['max_count']-task['count']):
+                                await self.complete_task(task=task['type'])
+                                await asyncio.sleep(16)
+                        else:
+                            await self.complete_task(task=task['type'])
+                            await asyncio.sleep(random.uniform(*config.TASK_SLEEP))
+                
+                tickets = user['result']['tickets']
+                if tickets > config.MAX_SPIN_PER_CYCLE:
+                    tickets = config.MAX_SPIN_PER_CYCLE
+                    
+                await self.wheel(spin_count=tickets)
+                
+                logger.info(f"main | Thread {self.thread} | {self.name} | Lingkaran telah berakhir, lingkaran berikutnya akan dimulai setelahnya BIG_SLEEP")
+                await asyncio.sleep(random.randint(*config.BIG_SLEEP))
+                
+            except Exception as err:
+                logger.error(f"main | Thread {self.thread} | {self.name} | {err}")
+                await asyncio.sleep(20*random.uniform(*config.MINI_SLEEP))
+    
+    async def wheel(self, spin_count : int):
+        json_data = {}
+
+        response = await self.session.post('https://api.agent301.org/wheel/load', json=json_data)
+        response = await response.json()
+        logger.info(f"wheel | Thread {self.thread} | {self.name} | TON : {response['result']['toncoin']/100} | NOT : {response['result']['notcoin']}")
+        if int(datetime.now().timestamp()) >= response['result']['tasks']['daily']:
+            json_data_daily = {
+                'type': 'daily',
+            }
+            daily_resp = await self.session.post('https://api.agent301.org/wheel/task', json=json_data_daily)
+            daily_resp = await daily_resp.json()
+            if daily_resp['ok']:
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | Claim 1 TICKET for daily reward")
+            await asyncio.sleep(random.uniform(*config.TASK_SLEEP))
+        else:
+            logger.info(f"wheel | Thread {self.thread} | {self.name} | Daily reward 1 ticket can claim after {response['result']['tasks']['daily']-int(datetime.now().timestamp())} sec")
+        if not response['result']['tasks']['rps']:
+            json_data_rps = {
+                'type': 'rps',
+            }
+
+            rps_resp = await self.session.post('https://api.agent301.org/wheel/task', json=json_data_rps)
+            rps_resp = await rps_resp.json()
+            if rps_resp['ok']:
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | Claim 1 TICKET for task")
+            await asyncio.sleep(random.uniform(*config.TASK_SLEEP))
+        if 'bird' in response['result']['tasks']:
+            if not response['result']['tasks']['bird']:
+                json_data_bird = {
+                    'type': 'bird',
+                }
+                bird_resp = await self.session.post('https://api.agent301.org/wheel/task', json=json_data_bird)
+                bird_resp = await bird_resp.json()
+                if bird_resp['ok']:
+                    logger.success(f"wheel | Thread {self.thread} | {self.name} | Claim 1 TICKET for task")
+                await asyncio.sleep(random.uniform(*config.TASK_SLEEP))
+        else:
+            pass
+        if int(datetime.now().timestamp()) >= response['result']['tasks']['hour']['timestamp']:
+            for _ in range(5-response['result']['tasks']['hour']['count']):
+                await asyncio.sleep(15)
+                json_data_daily = {
+                    'type': 'hour',
+                }
+                daily_resp = await self.session.post('https://api.agent301.org/wheel/task', json=json_data_daily)
+                daily_resp = await daily_resp.json()
+                if daily_resp['ok']:
+                    logger.success(f"wheel | Thread {self.thread} | {self.name} | Claim 1 TICKET for VIDEO reward")
+                await asyncio.sleep(random.uniform(*config.TASK_SLEEP))
+            
+        for _ in range(spin_count):
+            json_data = {}
+
+            spin_resp = await self.session.post('https://api.agent301.org/wheel/spin', json=json_data)
+            spin_resp = await spin_resp.json()
+            result = spin_resp['result']['reward']
+            if result == 'c1000':
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | reward : 1,000 AP")
+            elif result == 'c10000':
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | reward : 10,000 AP")
+            elif result == 't1':
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | reward : 1 TICKET")
+            elif result == 't3':
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | reward : 3 TICKETS")
+            elif result == 'tc1':
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | reward : 0.01 TON")
+            elif result == 'tc4':
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | reward : 4 TON")
+            elif result == 'nt1':
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | reward : 1 NOT")
+            elif result == 'nt5':
+                logger.success(f"wheel | Thread {self.thread} | {self.name} | reward : 5 NOT")
+            await asyncio.sleep(random.uniform(*config.MINI_SLEEP))
+                
+    async def complete_task(self, task : str):
+        json_data = {
+            'type': task,
+        }
+        response = await self.session.post('https://api.agent301.org/completeTask', json=json_data)
+        response = await response.json()
+        if response['ok']:
+            logger.success(f"complete_task | Thread {self.thread} | {self.name} | Claim {response['result']['reward']} for task {task}")
+        else:
+            logger.error(f"complete_task | Thread {self.thread} | {self.name} | {response}")
+        return response
+    
+    async def get_me(self):
+        
+        json_data = {
+            'referrer_id': int(self.ref[7:]),
+        }
+        response = await self.session.post('https://api.agent301.org/getMe', json=json_data)
+        response = await response.json()
+        return response
+
+    async def get_tasks(self):
+        json_data = {}
+
+        response = await self.session.post('https://api.agent301.org/getTasks', json=json_data)
+        response = await response.json()
+        return response
+
+    async def login(self):
+        try:
+            if not self.authozire:
+                tg_web_data = await self.get_tg_web_data()
+            else:
+                with open('authorization.txt','r') as file:
+                    file = [i.split() for i in file.readlines()]
+                    for name,token in file:
+                        if name == self.name:
+                            self.session.headers['authorization'] = token
+                            tg_web_data = True
+                            break
+                    else:
+                        logger.info(f"login | Thread {self.thread} | {self.name} | не найдена авторизация")
+                    
+            if tg_web_data == False:
+                return False
+            return True
+        except Exception as err:
+            logger.error(f"login | Thread {self.thread} | {self.name} | {err}")
+            return False
+        
+    async def get_tg_web_data(self):
+        async with self.client:
+            try:
+                web_view = await self.client.invoke(RequestAppWebView(
+                    peer=await self.client.resolve_peer('Agent301Bot'),
+                    app=InputBotAppShortName(bot_id=await self.client.resolve_peer('Agent301Bot'), short_name="app"),
+                    platform='android',
+                    write_allowed=True,
+                    start_param=self.ref
+                ))
+
+                auth_url = web_view.url
+                self.session.headers['authorization'] = unquote(string=auth_url.split('tgWebAppData=')[1].split('&tgWebAppVersion')[0])
+                
+                self.tg_acc_info = self.get_dict(query=unquote(string=auth_url.split('tgWebAppData=')[1].split('&tgWebAppVersion')[0]))
+                return True
+            except Exception as err:
+                logger.error(f"get_tg_web_data | Thread {self.thread} | {self.name} | {err}")
+                return False
+            
+    def get_dict(self, query : str):
+        parsed_query = parse_qs(query)
+        parsed_query['user'] = json.loads(unquote(parsed_query['user'][0]))
+        return parsed_query
+
+    async def save_authorization(self):
+        await asyncio.sleep(random.uniform(*config.ACC_DELAY))
+        async with self.client:
+            try:
+                web_view = await self.client.invoke(RequestAppWebView(
+                    peer=await self.client.resolve_peer('Agent301Bot'),
+                    app=InputBotAppShortName(bot_id=await self.client.resolve_peer('Agent301Bot'), short_name="app"),
+                    platform='android',
+                    write_allowed=True,
+                    start_param=self.ref
+                ))
+
+                auth_url = web_view.url
+                authorization = unquote(string=auth_url.split('tgWebAppData=')[1].split('&tgWebAppVersion')[0])
+                with open('authorization.txt','r') as data:
+                    rows = [i.split() for i in data.readlines()]
+                with open('authorization.txt','a+') as file:
+                    for name,token in rows:
+                        if name==self.name:
+                            logger.info(f"save_authorization | Thread {self.thread} | {self.name} | otorisasi untuk akun ini sudah ada")
+                            break
+                    else:
+                        file.write(f"{self.name} {authorization}\n")
+                await self.session.close()
+            except Exception as err:
+                logger.error(f"get_tg_web_data | Thread {self.thread} | {self.name} | {err}")
+                await self.session.close()
+                return False
+    
+    async def stats(self):
+        try:
+            await self.login()
+            
+            json_data = {}
+
+            load = await self.session.post('https://api.agent301.org/wheel/load', json=json_data)
+            load = await load.json()
+            
+            json_data = {
+                'referrer_id': int(self.ref[7:]),
+            }
+            get_me = await self.session.post('https://api.agent301.org/getMe', json=json_data)
+            get_me = await get_me.json()
+            
+            session = f"{self.name}.session"
+            toncoin = load['result']['toncoin']/100
+            notcoin = load['result']['notcoin']
+            balance = get_me['result']['balance']
+            tickets = get_me['result']['tickets']
+            await self.session.close()
+            return {
+                'session' : session,
+                'balance' : balance,
+                'tickets' : tickets,
+                'toncoin' : toncoin,
+                'notcoin' : notcoin
+            }
+        except:
+            return None
